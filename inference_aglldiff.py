@@ -176,7 +176,7 @@ def create_argparser():
         seed=12345678,
         task='LIE',
         in_dir='./examples',
-        out_dir='results_v4',
+        out_dir='results',
         clip_denoised=True,
         num_samples=1,
         batch_size=1,
