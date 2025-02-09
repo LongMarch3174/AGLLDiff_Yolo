@@ -80,8 +80,8 @@ pip install -e .
 ### Pretrained Model
 Download the pretrained diffusion model from [guided-diffusion](https://github.com/openai/guided-diffusion?tab=readme-ov-file) and the pretrained Rnet model from [Google Drive](https://drive.google.com/file/d/1PCJX_6j3NIqmDHy55P3yAcX9ze1EVRwJ/view?usp=sharing). Place both models in the `ckpt` folder.
 ```
-mkdir ckpts
-cd ckpts
+mkdir ckpt
+cd ckpt
 wget https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
 cd ..
 ```
