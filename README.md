@@ -97,7 +97,7 @@ For example, you can use the following command to run inference with customized 
 
 
 ```
-python inference_pgdiff.py \
+python inference_aglldiff.py \
 --in_dir ./input_images/ \
 --out_dir ./output_results/ \
 --model_path "./ckpt/256x256_diffusion_uncond.pt" \
