@@ -89,7 +89,7 @@ cd ..
 ## :circus_tent: Inference
 ### Example usage:
 ```
-python inference_aglldiff.py --task LIE --in_dir ./input_images/ --out_dir ./output_results/
+python inference_aglldiff.py --task LIE --in_dir ./examples/ --out_dir ./results/
 ```
 There are other arguments you may want to change. You can change the hyperparameters using the command line.
 
@@ -98,8 +98,8 @@ For example, you can use the following command to run inference with customized 
 
 ```
 python inference_aglldiff.py \
---in_dir ./input_images/ \
---out_dir ./output_results/ \
+--in_dir ./examples/ \
+--out_dir ./results/ \
 --model_path "./ckpt/256x256_diffusion_uncond.pt" \
 --retinex_model "./ckpt/RNet_1688_step.ckpt" \
 --guidance_scale 2.3 \
