@@ -108,7 +108,7 @@ python inference_aglldiff.py \
 --exposure_weight 1000 \
 --base_exposure 0.46 \
 --adjustment_amplitude 0.25 \
---N 2 \
+--N 2 
 ```
 
 Explanation of important arguments:
