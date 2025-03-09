@@ -121,5 +121,36 @@ class L_exp2(nn.Module):
         d = torch.mean(torch.pow(mean_x - mean_y, 2))
         return d
 
+class L_structure2(nn.Module):
+    def __init__(self):
+        super(L_structure2, self).__init__()
 
+    def forward(self, input, target):
+        H,W = input.shape[-2:]
+        x_fft = torch.fft.rfft2(input+1e-8, norm='backward')
+        x_amp = torch.abs(x_fft)
+        x_pha = torch.angle(x_fft)
+        real_uni = 1 * torch.cos(x_pha)+1e-8
+        imag_uni = 1 * torch.sin(x_pha)+1e-8
+        x_uni = torch.complex(real_uni, imag_uni)+1e-8
+        x_uni = torch.abs(torch.fft.irfft2(x_uni, s=(H, W), norm='backward'))
+        x_g = torch.gradient(x_uni,axis=(2,3),edge_order=2)
+        x_g_x  = x_g[0];x_g_y = x_g[1]
+        
+        y_fft = torch.fft.rfft2(target+1e-8, norm='backward')
+        y_amp = torch.abs(y_fft)
+        y_pha = torch.angle(y_fft)
+        real_uni = 1 * torch.cos(y_pha)+1e-8
+        imag_uni = 1 * torch.sin(y_pha)+1e-8
+        y_uni = torch.complex(real_uni, imag_uni)+1e-8
+        y_uni = torch.abs(torch.fft.irfft2(y_uni, s=(H, W), norm='backward'))
+        y_g = torch.gradient(y_uni,axis=(2,3),edge_order=2)
+        y_g_x  = y_g[0];y_g_y =y_g[1]
+        
+        D_left = torch.pow(x_g_x - y_g_x,2)
+        D_right = torch.pow(x_g_y - y_g_y,2)
+        
+        E = (D_left + D_right)
+        
+        return E
 
