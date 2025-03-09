@@ -20,7 +20,7 @@ from guided_diffusion.script_util import (
 )
 
 def main(inference_step=None):
-    L_spa = L_structure()
+    L_spa = L_structure2()
     L_exp = L_exp2(1)
     
     def attribute_guidance(x, t, y=None, pred_xstart=None, target=None, ref=None, mask=None, 
