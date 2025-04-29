@@ -154,3 +154,22 @@ class L_structure2(nn.Module):
         
         return E
 
+class L_fft(nn.Module):
+    def __init__(self):
+        super(L_fft, self).__init__()
+
+    def forward(self, input, target):
+        """
+        计算输入图像和目标图像在频域（幅度谱）上的均方误差。
+        """
+        _, _, H, W = input.shape
+        input_fft = torch.fft.fft2(input, norm='ortho')
+        target_fft = torch.fft.fft2(target, norm='ortho')
+
+        input_amp = torch.abs(input_fft)
+        target_amp = torch.abs(target_fft)
+
+        loss = F.mse_loss(input_amp, target_amp)
+        return loss
+
+
