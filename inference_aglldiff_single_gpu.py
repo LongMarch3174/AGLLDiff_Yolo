@@ -18,6 +18,11 @@ from guided_diffusion.script_util import (
 from guided_diffusion import logger
 
 
+"""
+单GPU推理
+"""
+
+
 def main(inference_step=None):
     device = th.device("cuda:0" if th.cuda.is_available() else "cpu")
     L_spa = L_structure2()
