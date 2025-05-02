@@ -624,41 +624,48 @@ class GaussianDiffusion:
             eta=0.0,
     ):
         """
-        DDIM sampling step with dynamic multi-step attribute guidance (N),
-        and proper pred_xstart injection for cond_fn.
+        DDIM sampling step with dynamic multi-step attribute guidance, ensuring
+        all cond_fn calls use the scaled timestep.
 
         Args:
             model: the denoising model.
-            x: current x_t.
-            t: current timestep.
-            cond_fn: attribute guidance function, expects pred_xstart in kwargs.
-            model_kwargs: must contain 'scale' and optionally 'N'.
+            x: current x_t tensor.
+            t: current timestep tensor (unscaled).
+            clip_denoised: whether to clip denoised output.
+            denoised_fn: optional post-processing on x0.
+            cond_fn: guidance function, expects pred_xstart in kwargs.
+            model_kwargs: dict, must contain 'scale' and optionally 'N'.
             eta: DDIM noise control.
 
         Returns:
             dict with:
-                - sample: x_{t-1}
-                - pred_xstart: estimated x_0
+                - "sample": x_{t-1}
+                - "pred_xstart": estimated x_0
         """
         assert model_kwargs is not None
         N_base = int(model_kwargs.get("N", 1))
         scale = float(model_kwargs.get("scale", 1.0))
 
-        # Step 1: predict mean, var, pred_xstart
+        # Compute the scaled timestep for all cond_fn calls
+        t_scaled = self._scale_timesteps(t)
+
+        # Step 1: predict mean, variance, and pred_xstart
         out = self.p_mean_variance(
             model,
             x,
             t,
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
-            model_kwargs=model_kwargs
+            model_kwargs=model_kwargs,
         )
 
-        # Step 2: inject pred_xstart to cond_fn
+        # Step 2: initial guidance on the mean via condition_score
         if cond_fn is not None:
-            out = self.condition_score(cond_fn, out, x, t, model_kwargs=model_kwargs)
+            out = self.condition_score(
+                cond_fn, out, x, t, model_kwargs=model_kwargs
+            )
 
-        # Step 3: compute eps, noise, sample = mean + noise
+        # Step 3: compute eps, alpha bars, sigma, and preliminary sample
         eps = self._predict_eps_from_xstart(x, t, out["pred_xstart"])
         alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x.shape)
         alpha_bar_prev = _extract_into_tensor(self.alphas_cumprod_prev, t, x.shape)
@@ -675,24 +682,24 @@ class GaussianDiffusion:
         noise = th.randn_like(x)
         sample = mean_pred + nonzero_mask * sigma * noise
 
-        # Step 4: pred_xstart → grad0, inject before cond_fn
+        # Step 4: first gradient-guided correction, using pred_xstart
         if cond_fn is not None:
             mk = dict(model_kwargs)
             mk["pred_xstart"] = out["pred_xstart"]
-            grad0 = cond_fn(x, self._scale_timesteps(t), **mk)
+            grad0 = cond_fn(x, t_scaled, **mk)
 
-            # Step 5: dynamic N_hat based on ‖x - sample‖ / ‖grad‖
+            # dynamic estimation of N_hat in [1,5]
             err_norm = (x - sample).norm()
-            grad_norm = grad0.norm() + 1e-8
+            grad_norm = grad0.norm().clamp_min(1e-8)
             N_hat = int((err_norm / grad_norm * N_base).item())
             N = max(1, min(5, N_hat))
 
-            # First gradient application
+            # apply first correction
             sample = sample - scale * grad0
         else:
             N = 1
 
-        # Step 6: repeat N-1 guided updates
+        # Step 5: repeat N-1 additional guidance updates
         for _ in range(N - 1):
             x = sample
             out = self.p_mean_variance(
@@ -704,7 +711,9 @@ class GaussianDiffusion:
                 model_kwargs=model_kwargs,
             )
             if cond_fn is not None:
-                out = self.condition_score(cond_fn, out, x, t, model_kwargs=model_kwargs)
+                out = self.condition_score(
+                    cond_fn, out, x, t, model_kwargs=model_kwargs
+                )
 
             eps = self._predict_eps_from_xstart(x, t, out["pred_xstart"])
             mean_pred = (
@@ -716,7 +725,7 @@ class GaussianDiffusion:
             if cond_fn is not None:
                 mk = dict(model_kwargs)
                 mk["pred_xstart"] = out["pred_xstart"]
-                grad = cond_fn(x, self._scale_timesteps(t), **mk)
+                grad = cond_fn(x, t_scaled, **mk)
                 sample = sample - scale * grad
 
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}

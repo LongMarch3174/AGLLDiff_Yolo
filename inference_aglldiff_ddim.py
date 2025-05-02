@@ -157,7 +157,7 @@ def create_argparser():
         N=2,
     )
     defaults.update(model_and_diffusion_defaults())
-    defaults["timestep_respacing"] = "20"
+    defaults["timestep_respacing"] = "10"
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
