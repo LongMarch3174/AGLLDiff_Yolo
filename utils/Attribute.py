@@ -154,6 +154,83 @@ class L_structure2(nn.Module):
         
         return E
 
+
+class L_fft_multiscale(nn.Module):
+    def __init__(self):
+        super(L_fft_multiscale, self).__init__()
+
+    def fft_amp(self, img):
+        fft = torch.fft.fft2(img, norm='ortho')
+        return torch.abs(fft)
+
+    def forward(self, input, target):
+        loss = 0
+        for scale in [1.0, 0.5, 0.25]:
+            if scale != 1.0:
+                input_scaled = F.interpolate(input, scale_factor=scale, mode='bilinear', align_corners=False)
+                target_scaled = F.interpolate(target, scale_factor=scale, mode='bilinear', align_corners=False)
+            else:
+                input_scaled, target_scaled = input, target
+
+            input_amp = self.fft_amp(input_scaled)
+            target_amp = self.fft_amp(target_scaled)
+            loss += F.mse_loss(input_amp, target_amp)
+
+        return loss
+
+
+class AdaptiveLossWeighting(nn.Module):
+    """
+    自适应多任务 loss 加权器
+
+    Args:
+        num_losses (int): loss 项数量
+        mode        (str): 'softmax' or 'uncertainty'
+        tau       (float): softmax 温度 (仅 softmax 模式有效)
+        ema_beta  (float): EMA 系数 (0=不用 EMA)
+    """
+    def __init__(self, num_losses: int, mode: str = "softmax",
+                 tau: float = 1.0, ema_beta: float = 0.0):
+        super().__init__()
+        assert mode in ("softmax", "uncertainty")
+        self.mode = mode
+        self.tau  = tau
+        self.ema_beta = ema_beta
+        # learnable params
+        if mode == "softmax":
+            self.logits = nn.Parameter(torch.zeros(num_losses))  # w_i = softmax(logits/τ)
+        else:  # uncertainty
+            self.log_vars = nn.Parameter(torch.zeros(num_losses))  # s_i = log σ_i^2
+
+        # for EMA
+        if ema_beta > 0:
+            self.register_buffer("ema_loss", torch.zeros(num_losses), persistent=False)
+
+    def forward(self, loss_list):
+        """
+        输入: list[Tensor] 各子 loss (标量或 batch 平均)
+        输出: total_loss, weight_tensor
+        """
+        losses = torch.stack(loss_list)   # [K]
+        if self.ema_beta > 0:
+            # 更新 loss 的滑动均值 (不参与梯度)
+            with torch.no_grad():
+                self.ema_loss.mul_(self.ema_beta).add_(losses.detach() * (1 - self.ema_beta))
+            norm_losses = losses / (self.ema_loss + 1e-8)
+        else:
+            norm_losses = losses
+
+        if self.mode == "softmax":
+            weights = torch.softmax(self.logits / self.tau, dim=0)
+            total   = torch.dot(weights, norm_losses)
+        else:  # uncertainty weighting
+            inv_sigma2 = torch.exp(-self.log_vars)          # exp(-s_i)
+            total = 0.5 * torch.sum(inv_sigma2 * losses + self.log_vars)  # Σ ½ e^{-s} L + ½ s
+            weights = inv_sigma2 / inv_sigma2.sum()         # 仅用于监控
+
+        return total, weights.detach()  # 返回权重的 detach 版方便打印
+
+
 class L_fft(nn.Module):
     def __init__(self):
         super(L_fft, self).__init__()

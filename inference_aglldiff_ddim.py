@@ -147,7 +147,7 @@ def create_argparser():
         inference_step=10,
         model_path='./ckpt/256x256_diffusion_uncond.pt',
         retinex_model='./ckpt/RNet_1688_step.ckpt',
-        guidance_scale=5,
+        guidance_scale=2.3,
         structure_weight=10,
         color_map_weight=0.003,
         exposure_weight=1000,
