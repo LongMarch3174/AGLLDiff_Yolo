@@ -27,49 +27,35 @@ def main(inference_step=None):
     device = th.device("cuda:0" if th.cuda.is_available() else "cpu")
     L_spa = L_structure2()
     L_exp = L_exp2(1)
-    L_fft_loss = L_fft()
+    L_fft_loss = L_fft_multiscale()
+    loss_weighter = AdaptiveLossWeighting(num_losses=4,
+                                        mode='uncertainty',  # 或 'softmax'
+                                        tau=0.5,  # softmax 温度
+                                        ema_beta=0.9).to(device)
 
     def attribute_guidance(x, t, y=None, pred_xstart=None, target=None, ref=None, mask=None,
                            task="LIE", scale=0, N=None, exposure_map=None, reflectence_map=None):
         assert y is not None
-        with th.enable_grad():
+        with torch.enable_grad():
             predicted_start = pred_xstart.detach().requires_grad_(True)
-            total_loss = 0
 
-            print(f'[t={str(t.cpu().numpy()[0]).zfill(3)}]', end=' ')
+            predicted_start_norm = (predicted_start + 1) * 0.5
+            target_norm = (y + 1) * 0.5
 
-            predicted_start_norm = ((predicted_start + 1) * 0.5)
-            target_norm = ((y + 1) * 0.5)
+            # individual losses
+            loss_structure = torch.mean(L_spa(target_norm, predicted_start_norm))
+            loss_exposure = L_exp(predicted_start_norm, exposure_map)
+            loss_reflect = F.mse_loss(reflectence_map, predicted_start_norm, reduction='sum')
+            loss_fft = L_fft_loss(predicted_start_norm, target_norm)
 
-            tau = t.float() / (inference_step - 1)  # 步数归一化
-            tau = tau.unsqueeze(0)  # 保持维度一致
+            # combine with learnable weights
+            total_loss, w = loss_weighter([loss_structure, loss_exposure, loss_reflect, loss_fft])
 
-            # 动态调整每个loss的权重
-            structure_weight = args.structure_weight * (1 - tau)
-            exposure_weight = args.exposure_weight * tau
-            color_map_weight = args.color_map_weight  # 可以固定
-            fft_weight = args.fft_weight * (1 - (2 * tau - 1).abs())  # 中期最强
+            print("W=[%s]  Ls=[%.3f, %.3f, %.3f, %.3f]  Total=%.3f" %
+                  (", ".join(["%.3f" % x for x in w]),
+                   loss_structure.item(), loss_exposure, loss_reflect.item(), loss_fft, total_loss))
 
-            # 计算各部分loss
-            spatial_structure_loss = th.mean(L_spa(target_norm, predicted_start_norm)) * structure_weight
-            illumination_loss = L_exp(predicted_start_norm, exposure_map) * exposure_weight
-            reflectance_loss = F.mse_loss(reflectence_map, predicted_start_norm, reduction='sum') * color_map_weight
-            fft_loss = L_fft_loss(predicted_start_norm, target_norm) * fft_weight
-
-            total_loss = spatial_structure_loss + illumination_loss + reflectance_loss + fft_loss
-
-            print(f'loss (structure): {spatial_structure_loss.item()};', end=' ')
-            print(f'loss (exposure): {illumination_loss.item()};', end=' ')
-            print(f'loss (color): {reflectance_loss};', end=' ')
-            print(f'loss (fft): {fft_loss.item()};', end=' ')
-            print(f'loss (total): {total_loss.item()};')
-
-            if t.cpu().numpy()[0] > 0:
-                print(end='\r')
-            else:
-                print('\n')
-
-            gradient = th.autograd.grad(total_loss, predicted_start)[0]
+            gradient = torch.autograd.grad(total_loss, predicted_start)[0]
 
         return gradient, None
 
