@@ -32,6 +32,8 @@ def main(inference_step=None):
             predicted_start = pred_xstart.detach().requires_grad_(True)
             total_loss = 0
 
+            print(f'[t={str(t.cpu().numpy()[0]).zfill(3)}]', end=' ')
+
             # 归一化权重计算
             tau = t.float() / (inference_step - 1)
             tau = tau.unsqueeze(0)
@@ -45,8 +47,14 @@ def main(inference_step=None):
             illum_loss = L_exp(((predicted_start + 1) * 0.5), kwargs.get('exposure_map')) * exposure_weight
             refl_loss = F.mse_loss(kwargs.get('reflectence_map'), ((predicted_start + 1) * 0.5),
                                    reduction='sum') * color_map_weight
-            fft_l = L_fft_loss(((predicted_start + 1) * 0.5), ((y + 1) * 0.5)) * fft_weight
-            total_loss = spatial_loss + illum_loss + refl_loss + fft_l
+            fft_loss = L_fft_loss(((predicted_start + 1) * 0.5), ((y + 1) * 0.5)) * fft_weight
+            total_loss = spatial_loss + illum_loss + refl_loss + fft_loss
+
+            print(f'loss (structure): {spatial_loss.item()};', end=' ')
+            print(f'loss (exposure): {illum_loss.item()};', end=' ')
+            print(f'loss (color): {refl_loss};', end=' ')
+            print(f'loss (fft): {fft_loss.item()};', end=' ')
+            print(f'loss (total): {total_loss.item()};')
 
             gradient = th.autograd.grad(total_loss, predicted_start)[0]
         return gradient
@@ -117,20 +125,7 @@ def main(inference_step=None):
                 device=device,
                 eta=args.eta
             )
-        else:
-            sample = diffusion.p_sample_loop(
-                model_fn,
-                (args.batch_size, 3, h, w),
-                noise=None,
-                clip_denoised=args.clip_denoised,
-                denoised_fn=None,
-                cond_fn=attribute_guidance,
-                model_kwargs=model_kwargs,
-                device=device,
-                progress=False,
-                seed=seed,
-                inference_step=inference_step
-            )
+
         out = ((sample[:, :, :raw.shape[0], :raw.shape[1]] + 1) * 127.5).clamp(0, 255).to(th.uint8)
         out = out.permute(0, 2, 3, 1).cpu().numpy()[0][:, :, ::-1]
         cv2.imwrite(f"{out_dir}/{img_name}", out)
@@ -148,19 +143,21 @@ def create_argparser():
         batch_size=1,
         use_ddim=True,
         eta=0.1,
-        timestep_respacing=10,
+        timestep_respacing="10",
+        inference_step=10,
         model_path='./ckpt/256x256_diffusion_uncond.pt',
         retinex_model='./ckpt/RNet_1688_step.ckpt',
         guidance_scale=2.3,
         structure_weight=10,
-        color_map_weight=0.03,
-        exposure_weight=1000,
-        fft_weight=10,
+        color_map_weight=0.003,
+        exposure_weight=100,
+        fft_weight=1,
         base_exposure=0.46,
         adjustment_amplitude=0.25,
         N=2,
     )
     defaults.update(model_and_diffusion_defaults())
+    defaults["timestep_respacing"] = "100"
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
@@ -169,5 +166,4 @@ def create_argparser():
 if __name__ == '__main__':
     parser = create_argparser()
     args = parser.parse_args()
-    steps = args.timestep_respacing
-    main(inference_step=steps)
+    main(inference_step=int(args.timestep_respacing))
