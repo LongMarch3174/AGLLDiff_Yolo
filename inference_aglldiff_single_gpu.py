@@ -28,10 +28,22 @@ def main(inference_step=None):
     L_spa = L_structure2()
     L_exp = L_exp2(1)
     L_fft_loss = L_fft_multiscale()
-    loss_weighter = AdaptiveLossWeighting(num_losses=4,
-                                        mode='uncertainty',  # 或 'softmax'
-                                        tau=0.5,  # softmax 温度
-                                        ema_beta=0.9).to(device)
+    loss_weighter = AdaptiveLossWeighting(
+        num_losses=4,
+        mode='uncertainty',  # 或 'softmax'
+        tau=0.5,
+        ema_beta=0.9
+    ).to(device)
+
+    args = create_argparser().parse_args()
+
+    if os.path.isfile(args.loss_weight_path):
+        loss_weighter.load_state_dict(th.load(args.loss_weight_path, map_location=device))
+        print(f"Loaded loss weights from {args.loss_weight_path}")
+    else:
+        print(f"Warning: loss_weight_path not found at {args.loss_weight_path}")
+
+    loss_weighter.eval()  # ✅ 推理阶段关闭梯度更新
 
     def attribute_guidance(x, t, y=None, pred_xstart=None, target=None, ref=None, mask=None,
                            task="LIE", scale=0, N=None, exposure_map=None, reflectence_map=None):
@@ -63,8 +75,6 @@ def main(inference_step=None):
                  exposure_map=None, reflectence_map=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
-
-    args = create_argparser().parse_args()
 
     # 创建输出目录
     os.makedirs(args.out_dir, exist_ok=True)
@@ -170,6 +180,7 @@ def create_argparser():
         use_ddim=False,
         model_path="./ckpt/256x256_diffusion_uncond.pt",
         retinex_model="./ckpt/RNet_1688_step.ckpt",
+        loss_weight_path="./ckpt/weight_epoch4.pth",
         guidance_scale=2.3,
         structure_weight=10,
         color_map_weight=0.03,

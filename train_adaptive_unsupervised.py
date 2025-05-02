@@ -59,9 +59,9 @@ def create_argparser():
         # training hyperparams
         # resume & pretrained
         pretrained_model='./ckpt/model_epoch1.pth',  # path to a model .pth to init weights
-        resume_epoch=1,  # epoch number to resume loss_weighter & optimizer
+        resume_epoch=4,  # epoch number to resume loss_weighter & optimizer
         epochs=5,
-        batch_size=4,
+        batch_size=2,
         lr=2e-4,
         seed=12345678,
         # exposure map params
@@ -148,7 +148,9 @@ def main():
     loader = DataLoader(dataset, batch_size=args.batch_size,
                         shuffle=True, num_workers=4, pin_memory=True)
 
-    for epoch in range(args.epochs):
+    start_epoch = args.resume_epoch + 1 if args.resume_epoch is not None else 0
+    end_epoch = start_epoch + args.epochs
+    for epoch in range(start_epoch, end_epoch):
         pbar = tqdm(loader, desc=f"Epoch {epoch}")
         for x, img_paths in pbar:
             x = x.to(device)               # [B,3,256,256]
