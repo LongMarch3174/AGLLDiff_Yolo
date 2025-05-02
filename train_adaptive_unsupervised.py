@@ -57,7 +57,9 @@ def create_argparser():
         ckpt_dir='./ckpt',
         retinex_model='./ckpt/RNet_1688_step.ckpt',
         # training hyperparams
-        pretrained_model='./ckpt/256x256_diffusion_uncond.pt',
+        # resume & pretrained
+        pretrained_model='./ckpt/model_epoch1.pth',  # path to a model .pth to init weights
+        resume_epoch=1,  # epoch number to resume loss_weighter & optimizer
         epochs=5,
         batch_size=4,
         lr=2e-4,
@@ -108,6 +110,18 @@ def main():
         list(model.parameters()) + list(loss_weighter.parameters()),
         lr=args.lr
     )
+
+    # optionally resume loss_weighter & optimizer
+    if args.resume_epoch is not None:
+        wpath = os.path.join(args.ckpt_dir, f"weight_epoch{args.resume_epoch}.pth")
+        opath = os.path.join(args.ckpt_dir, f"optim_epoch{args.resume_epoch}.pth")
+        if os.path.isfile(wpath) and os.path.isfile(opath):
+            loss_weighter.load_state_dict(torch.load(wpath, map_location=device))
+            optimizer.load_state_dict(torch.load(opath, map_location=device))
+            print(f"Resumed loss_weighter from {wpath}")
+            print(f"Resumed optimizer from {opath}")
+        else:
+            print(f"Warning: checkpoint for resume_epoch={args.resume_epoch} not found")
 
     # loss modules
     L_spa = L_structure2()
