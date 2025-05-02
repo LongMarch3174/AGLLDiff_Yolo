@@ -400,7 +400,7 @@ class GaussianDiffusion:
         """
         # 这里把 mk 传进去
         grad = cond_fn(x, self._scale_timesteps(t), **mk)
-        eps = eps - (1 - alpha_bar).sqrt() * grad
+        eps = eps - (1 - alpha_bar).sqrt() * model_kwargs["scale"] * grad
 
         out = p_mean_var.copy()
         out["pred_xstart"] = self._predict_xstart_from_eps(x, t, eps)
