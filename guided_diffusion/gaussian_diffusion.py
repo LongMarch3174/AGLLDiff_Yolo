@@ -385,12 +385,22 @@ class GaussianDiffusion:
         Unlike condition_mean(), this instead uses the conditioning strategy
         from Song et al (2020).
         """
+        # 先拷一份，避免改到外面
+        mk = {} if model_kwargs is None else dict(model_kwargs)
+        # 手动注入 pred_xstart
+        mk['pred_xstart'] = p_mean_var['pred_xstart']
+
         alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x.shape)
 
         eps = self._predict_eps_from_xstart(x, t, p_mean_var["pred_xstart"])
+        """
         eps = eps - (1 - alpha_bar).sqrt() * cond_fn(
             x, self._scale_timesteps(t), **model_kwargs
         )
+        """
+        # 这里把 mk 传进去
+        grad = cond_fn(x, self._scale_timesteps(t), **mk)
+        eps = eps - (1 - alpha_bar).sqrt() * grad
 
         out = p_mean_var.copy()
         out["pred_xstart"] = self._predict_xstart_from_eps(x, t, eps)

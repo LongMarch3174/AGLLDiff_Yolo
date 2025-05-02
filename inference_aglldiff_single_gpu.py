@@ -41,19 +41,28 @@ def main(inference_step=None):
             predicted_start_norm = ((predicted_start + 1) * 0.5)
             target_norm = ((y + 1) * 0.5)
 
-            spatial_structure_loss = th.mean(L_spa(target_norm, predicted_start_norm)) * args.structure_weight
-            illumination_loss = L_exp(predicted_start_norm, exposure_map) * args.exposure_weight
-            reflectance_loss = F.mse_loss(reflectence_map, predicted_start_norm,
-                                          reduction='sum') * args.color_map_weight
-            fft_loss = L_fft_loss(predicted_start_norm, target_norm) * args.fft_weight  # ← 新增的FFT频域损失
+            tau = t.float() / (inference_step - 1)  # 步数归一化
+            tau = tau.unsqueeze(0)  # 保持维度一致
+
+            # 动态调整每个loss的权重
+            structure_weight = args.structure_weight * (1 - tau)
+            exposure_weight = args.exposure_weight * tau
+            color_map_weight = args.color_map_weight  # 可以固定
+            fft_weight = args.fft_weight * (1 - (2 * tau - 1).abs())  # 中期最强
+
+            # 计算各部分loss
+            spatial_structure_loss = th.mean(L_spa(target_norm, predicted_start_norm)) * structure_weight
+            illumination_loss = L_exp(predicted_start_norm, exposure_map) * exposure_weight
+            reflectance_loss = F.mse_loss(reflectence_map, predicted_start_norm, reduction='sum') * color_map_weight
+            fft_loss = L_fft_loss(predicted_start_norm, target_norm) * fft_weight
 
             total_loss = spatial_structure_loss + illumination_loss + reflectance_loss + fft_loss
 
-            print(f'loss (structure): {spatial_structure_loss};', end=' ')
-            print(f'loss (exposure): {illumination_loss};', end=' ')
+            print(f'loss (structure): {spatial_structure_loss.item()};', end=' ')
+            print(f'loss (exposure): {illumination_loss.item()};', end=' ')
             print(f'loss (color): {reflectance_loss};', end=' ')
-            print(f'loss (fft): {fft_loss};', end=' ')
-            print(f'loss (total): {total_loss};')
+            print(f'loss (fft): {fft_loss.item()};', end=' ')
+            print(f'loss (total): {total_loss.item()};')
 
             if t.cpu().numpy()[0] > 0:
                 print(end='\r')
@@ -173,13 +182,13 @@ def create_argparser():
         num_samples=1,
         batch_size=1,
         use_ddim=False,
-        model_path="./ckpt/256x256_diffusion_uncond_pruned.pt",
+        model_path="./ckpt/256x256_diffusion_uncond.pt",
         retinex_model="./ckpt/RNet_1688_step.ckpt",
         guidance_scale=2.3,
         structure_weight=10,
         color_map_weight=0.03,
         exposure_weight=1000,
-        fft_weight=0.1,  # 新增FFT频域loss权重
+        fft_weight=10,  # 新增FFT频域loss权重
         base_exposure=0.46,
         adjustment_amplitude=0.25,
         N=2,
