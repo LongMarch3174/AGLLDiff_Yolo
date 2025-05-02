@@ -612,55 +612,113 @@ class GaussianDiffusion:
                 img = out["sample"]
                 yield out
 
-
     def ddim_sample(
-        self,
-        model,
-        x,
-        t,
-        clip_denoised=True,
-        denoised_fn=None,
-        cond_fn=None,
-        model_kwargs=None,
-        eta=0.0,
+            self,
+            model,
+            x,
+            t,
+            clip_denoised=True,
+            denoised_fn=None,
+            cond_fn=None,
+            model_kwargs=None,
+            eta=0.0,
     ):
         """
-        Sample x_{t-1} from the model using DDIM.
+        DDIM sampling step with dynamic multi-step attribute guidance (N),
+        and proper pred_xstart injection for cond_fn.
 
-        Same usage as p_sample().
+        Args:
+            model: the denoising model.
+            x: current x_t.
+            t: current timestep.
+            cond_fn: attribute guidance function, expects pred_xstart in kwargs.
+            model_kwargs: must contain 'scale' and optionally 'N'.
+            eta: DDIM noise control.
+
+        Returns:
+            dict with:
+                - sample: x_{t-1}
+                - pred_xstart: estimated x_0
         """
+        assert model_kwargs is not None
+        N_base = int(model_kwargs.get("N", 1))
+        scale = float(model_kwargs.get("scale", 1.0))
+
+        # Step 1: predict mean, var, pred_xstart
         out = self.p_mean_variance(
             model,
             x,
             t,
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
-            model_kwargs=model_kwargs,
+            model_kwargs=model_kwargs
         )
+
+        # Step 2: inject pred_xstart to cond_fn
         if cond_fn is not None:
             out = self.condition_score(cond_fn, out, x, t, model_kwargs=model_kwargs)
 
-        # Usually our model outputs epsilon, but we re-derive it
-        # in case we used x_start or x_prev prediction.
+        # Step 3: compute eps, noise, sample = mean + noise
         eps = self._predict_eps_from_xstart(x, t, out["pred_xstart"])
-
         alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x.shape)
         alpha_bar_prev = _extract_into_tensor(self.alphas_cumprod_prev, t, x.shape)
         sigma = (
-            eta
-            * th.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
-            * th.sqrt(1 - alpha_bar / alpha_bar_prev)
+                eta
+                * th.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
+                * th.sqrt(1 - alpha_bar / alpha_bar_prev)
         )
-        # Equation 12.
-        noise = th.randn_like(x)
         mean_pred = (
-            out["pred_xstart"] * th.sqrt(alpha_bar_prev)
-            + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
+                out["pred_xstart"] * th.sqrt(alpha_bar_prev)
+                + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
         )
-        nonzero_mask = (
-            (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
-        )  # no noise when t == 0
+        nonzero_mask = (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        noise = th.randn_like(x)
         sample = mean_pred + nonzero_mask * sigma * noise
+
+        # Step 4: pred_xstart → grad0, inject before cond_fn
+        if cond_fn is not None:
+            mk = dict(model_kwargs)
+            mk["pred_xstart"] = out["pred_xstart"]
+            grad0 = cond_fn(x, self._scale_timesteps(t), **mk)
+
+            # Step 5: dynamic N_hat based on ‖x - sample‖ / ‖grad‖
+            err_norm = (x - sample).norm()
+            grad_norm = grad0.norm() + 1e-8
+            N_hat = int((err_norm / grad_norm * N_base).item())
+            N = max(1, min(5, N_hat))
+
+            # First gradient application
+            sample = sample - scale * grad0
+        else:
+            N = 1
+
+        # Step 6: repeat N-1 guided updates
+        for _ in range(N - 1):
+            x = sample
+            out = self.p_mean_variance(
+                model,
+                x,
+                t,
+                clip_denoised=clip_denoised,
+                denoised_fn=denoised_fn,
+                model_kwargs=model_kwargs,
+            )
+            if cond_fn is not None:
+                out = self.condition_score(cond_fn, out, x, t, model_kwargs=model_kwargs)
+
+            eps = self._predict_eps_from_xstart(x, t, out["pred_xstart"])
+            mean_pred = (
+                    out["pred_xstart"] * th.sqrt(alpha_bar_prev)
+                    + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
+            )
+            sample = mean_pred + nonzero_mask * sigma * noise
+
+            if cond_fn is not None:
+                mk = dict(model_kwargs)
+                mk["pred_xstart"] = out["pred_xstart"]
+                grad = cond_fn(x, self._scale_timesteps(t), **mk)
+                sample = sample - scale * grad
+
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def ddim_reverse_sample(

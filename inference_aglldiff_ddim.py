@@ -147,17 +147,17 @@ def create_argparser():
         inference_step=10,
         model_path='./ckpt/256x256_diffusion_uncond.pt',
         retinex_model='./ckpt/RNet_1688_step.ckpt',
-        guidance_scale=2.3,
+        guidance_scale=5,
         structure_weight=10,
         color_map_weight=0.003,
         exposure_weight=1000,
-        fft_weight=1,
+        fft_weight=10,
         base_exposure=0.46,
         adjustment_amplitude=0.25,
         N=2,
     )
     defaults.update(model_and_diffusion_defaults())
-    defaults["timestep_respacing"] = "100"
+    defaults["timestep_respacing"] = "20"
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
