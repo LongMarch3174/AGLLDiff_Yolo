@@ -21,7 +21,7 @@ from Rnet import net as Rnet
 
 
 class Enhancer:
-    def __init__(self, opt_path=None, weights_path=None, gpus="0", self_ensemble=False):
+    def __init__(self):
         self.device = th.device("cuda:0" if th.cuda.is_available() else "cpu")
 
         # === 检查模型文件是否存在 ===
@@ -35,9 +35,12 @@ class Enhancer:
                 raise FileNotFoundError(f"未找到{name}：{path}")
 
         # === 加载模型 ===
-        self.model, self.diffusion = create_model_and_diffusion(
-            **args_to_dict(self._default_args(), model_and_diffusion_defaults().keys())
-        )
+        md_defaults = model_and_diffusion_defaults()
+        for k, v in self._default_args().items():
+            if k in md_defaults:
+                md_defaults[k] = v
+        self.model, self.diffusion = create_model_and_diffusion(**md_defaults)
+
         self.model.load_state_dict(th.load("model_data/256x256_diffusion_uncond.pt", map_location="cpu"))
         self.model.to(self.device).eval()
 
@@ -63,8 +66,7 @@ class Enhancer:
             model_path="model_data/256x256_diffusion_uncond.pt",
             retinex_model="model_data/RNet_1688_step.ckpt",
             loss_weight_path="model_data/weight_epoch7.pth",
-            guidance_scale=2.3, structure_weight=10, color_map_weight=0.03,
-            exposure_weight=1000, fft_weight=10,
+            guidance_scale=2.3,
             base_exposure=0.46, adjustment_amplitude=0.25, N=2
         )
 
@@ -100,6 +102,11 @@ class Enhancer:
                 total_loss = sum(w * l for w, l in zip(weights, [l_structure, l_exposure, l_reflect, l_fft]))
                 return th.autograd.grad(total_loss, pred)[0], None
 
+        def model_fn(x, t, y=None, target=None, ref=None, mask=None,
+                     task=None, scale=0, N=1,
+                     exposure_map=None, reflectence_map=None):
+            return self.model(x, t)
+
         for idx, p in enumerate(paths, start=1):
             if cancel_cb and cancel_cb():
                 break
@@ -121,7 +128,7 @@ class Enhancer:
             }
             _, _, h, w = model_kwargs["y"].shape
             sample = self.diffusion.p_sample_loop(
-                lambda x, t, **kw: self.model(x, t, kw.get("y")),
+                model_fn,
                 (1, 3, h, w),
                 clip_denoised=True,
                 model_kwargs=model_kwargs,

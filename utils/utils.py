@@ -143,14 +143,3 @@ def download_weights(phi, model_dir="./model_data"):
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
     load_state_dict_from_url(url, model_dir)
-
-def resource_path(relative_path: str) -> str:
-    """
-    PyInstaller 打包后，会把所有资源解压到 sys._MEIPASS 目录，
-    否则就在源码目录(__file__的同级)下寻找。
-    """
-    if hasattr(sys, "_MEIPASS"):
-        base = sys._MEIPASS
-    else:
-        base = os.path.abspath(os.path.dirname(__file__))
-    return os.path.join(base, relative_path)
