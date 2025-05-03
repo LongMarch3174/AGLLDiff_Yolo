@@ -247,7 +247,7 @@ def create_argparser():
         num_samples=1,
         batch_size=1,
         use_ddim=False,
-        model_path="./ckpt/model_epoch7.pth",
+        model_path="./ckpt/256x256_diffusion_uncond.pt",
         retinex_model="./ckpt/RNet_1688_step.ckpt",
         loss_weight_path="./ckpt/weight_epoch7.pth",
         guidance_scale=2.3,
