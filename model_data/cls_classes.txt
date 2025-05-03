@@ -1,0 +1,11 @@
+PET_Bottle
+Glass
+Metal
+Net
+Styrofoam_Buoy
+Plastic_Buoy_China
+Styrofoam_Piece
+Styrofoam_Box
+Plastic_ETC
+Rope
+Plastic_Buoy
