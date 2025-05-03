@@ -43,7 +43,7 @@ def main(inference_step=None):
     # 自适应权重：5 个 loss（noise + structure + exposure + reflect + fft）
     loss_weighter = AdaptiveLossWeighting(
         num_losses=5,
-        mode='uncertainty',      # or 'softmax'
+        mode='softmax',      # or 'softmax'
         tau=0.5,
         ema_beta=0.9
     ).to(device)
@@ -101,7 +101,7 @@ def main(inference_step=None):
             total_loss = sum(wi * li for wi, li in zip(w_active, loss_active))
 
             # 打印信息
-            print("W=[%s]  Ls=[%.3f, %.3f, %.3f, %.3f]  Total=%.3f" %
+            print("W=[%s]  Ls=[structure: %.3f, exposure: %.3f, color: %.3f, fft: %.3f]  Total=%.3f" %
                   (", ".join([f"{v:.3f}" for v in w_active]),
                    loss_structure.item(), loss_exposure.item(),
                    loss_reflect.item(), loss_fft.item(),
@@ -247,9 +247,9 @@ def create_argparser():
         num_samples=1,
         batch_size=1,
         use_ddim=False,
-        model_path="./ckpt/model_epoch4.pth",
+        model_path="./ckpt/model_epoch7.pth",
         retinex_model="./ckpt/RNet_1688_step.ckpt",
-        loss_weight_path="./ckpt/weight_epoch4.pth",
+        loss_weight_path="./ckpt/weight_epoch7.pth",
         guidance_scale=2.3,
         structure_weight=10,
         color_map_weight=0.03,

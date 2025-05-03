@@ -80,9 +80,9 @@ def create_argparser():
         ckpt_dir="./ckpt",
         retinex_model="./ckpt/RNet_1688_step.ckpt",
         # resume
-        resume_epoch=None,  # epoch to resume (‑1 for none)
+        resume_epoch=6,  # epoch to resume (‑1 for none)
         # training
-        epochs=5,
+        epochs=10,
         batch_size=2,
         lr=2e-4,
         seed=12345678,
@@ -90,8 +90,8 @@ def create_argparser():
         base_exposure=0.46,
         adjustment_amplitude=0.25,
         # adaptive‑weight
-        weight_mode="uncertainty",  # {uncertainty|softmax}
-        weight_tau=1.0,
+        weight_mode="softmax",  # {uncertainty|softmax}
+        weight_tau=0.7,
         weight_ema_beta=0.9,
         # schedule‑sampler
         schedule_sampler="uniform",  # {uniform|loss-second-moment}
