@@ -23,7 +23,10 @@ class Detector:
         self.use_onnx = use_onnx
 
     def _load(self):
-        return YOLO_ONNX() if self.use_onnx else YOLO()
+        model = YOLO_ONNX() if self.use_onnx else YOLO()
+        if not hasattr(model, 'detect_image'):
+            raise FileNotFoundError("未能加载模型，请检查模型文件是否存在。")
+        return model
 
     def predict_image(
         self,
@@ -33,6 +36,8 @@ class Detector:
     ) -> Image.Image:
         yolo = self._load()
         if isinstance(img, str):
+            if not os.path.exists(img):
+                raise FileNotFoundError(f"图像文件不存在：{img}")
             img = Image.open(img)
         return yolo.detect_image(img, crop=crop, count=count)
 
@@ -43,6 +48,9 @@ class Detector:
         progress_cb: Optional[Callable[[float], None]] = None,
         cancel_cb: Optional[Callable[[], bool]] = None,
     ) -> List[str]:
+        if not os.path.exists(origin_dir):
+            raise FileNotFoundError(f"输入目录不存在：{origin_dir}")
+
         yolo = self._load()
         os.makedirs(save_dir, exist_ok=True)
         files = [
@@ -75,6 +83,9 @@ class Detector:
         progress_cb: Optional[Callable[[float], None]] = None,
         cancel_cb: Optional[Callable[[], bool]] = None,
     ) -> None:
+        if isinstance(video_path, str) and not os.path.exists(video_path):
+            raise FileNotFoundError(f"视频文件不存在：{video_path}")
+
         yolo = self._load()
         cap = cv2.VideoCapture(video_path)
         writer = None
@@ -111,11 +122,17 @@ class Detector:
     def fps_test(
         self, img_path: str, test_interval: int = 100
     ) -> float:
+        if not os.path.exists(img_path):
+            raise FileNotFoundError(f"测试图像不存在：{img_path}")
+
         yolo = self._load()
         img = Image.open(img_path)
         return yolo.get_FPS(img, test_interval)
 
     def detect_heatmap(self, img_path: str, save_path: str) -> None:
+        if not os.path.exists(img_path):
+            raise FileNotFoundError(f"热力图图像不存在：{img_path}")
+
         yolo = self._load()
         img = Image.open(img_path)
         yolo.detect_heatmap(img, save_path)
@@ -138,6 +155,9 @@ class Detector:
         """
         from collections import Counter
 
+        if not os.path.exists(origin_dir):
+            raise FileNotFoundError(f"输入目录不存在：{origin_dir}")
+
         yolo = self._load()
         files = [
             f for f in os.listdir(origin_dir)
@@ -151,8 +171,6 @@ class Detector:
                 break
             path = os.path.join(origin_dir, fn)
             img = Image.open(path)
-            # detect_image 可以传 count=True，使其返回 (image, counts_dict)
-            # 假设 YOLO.detect_image 改成：return pil_img, {class: count}
             _, counts = yolo.detect_image(img, count=True)
             counter.update(counts)
             if progress_cb:
