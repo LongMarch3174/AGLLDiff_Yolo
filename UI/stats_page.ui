@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>StatsPage</class>
+ <widget class="QWidget" name="StatsPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <!-- 输入目录 -->
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_input">
+     <item>
+      <widget class="QLabel" name="inputLabel">
+       <property name="text">
+        <string>输入目录：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="originLineEdit"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="originBrowseButton">
+       <property name="text"><string>…</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <!-- 保存目录 -->
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_output">
+     <item>
+      <widget class="QLabel" name="saveLabel">
+       <property name="text"><string>保存目录：</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="saveLineEdit"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="saveBrowseButton">
+       <property name="text"><string>…</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <!-- 按钮区 -->
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_buttons">
+     <item>
+      <widget class="QPushButton" name="startButton">
+       <property name="text"><string>开始统计</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="abortButton">
+       <property name="text"><string>中止统计</string></property>
+       <property name="enabled"><bool>false</bool></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <!-- 进度条 -->
+   <item>
+    <widget class="QProgressBar" name="progressBar"/>
+   </item>
+   <!-- 预览标签 -->
+   <item>
+    <widget class="QLabel" name="chartLabel">
+     <property name="text"><string>统计图预览：</string></property>
+    </widget>
+   </item>
+   <!-- 图表预览区 -->
+   <item>
+    <widget class="QScrollArea" name="chartScrollArea">
+     <property name="widgetResizable"><bool>true</bool></property>
+     <widget class="QWidget" name="chartWidget">
+      <layout class="QGridLayout" name="chartGridLayout"/>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

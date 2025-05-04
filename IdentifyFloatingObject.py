@@ -2,14 +2,14 @@
 import sys
 import os
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QStackedWidget, QComboBox,
-    QMenuBar, QAction, QToolBar, QFileDialog,
-    QLabel, QLineEdit, QPushButton, QProgressBar,
+    QApplication, QMainWindow, QWidget, QStackedWidget, QAction, QToolBar,
+    QFileDialog, QLabel, QLineEdit, QPushButton, QProgressBar,
     QHBoxLayout, QVBoxLayout, QGridLayout, QScrollArea, QCheckBox,
-    QMessageBox, QStyledItemDelegate, QListView
+    QMessageBox
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.uic import loadUi
 
 from UI_enhance import Enhancer
 from UI_detect import Detector
@@ -31,24 +31,20 @@ class EnhanceThread(QThread):
         self._abort = True
 
     def run(self):
-        try:
-            enh = Enhancer()
-            paths = enh.enhance(
-                self.inp,
-                self.out,
-                progress_cb=lambda p: self.progress.emit(p),
-                cancel_cb=lambda: self._abort,
-            )
-            self.finished.emit(paths)
-        except FileNotFoundError as e:
-            # 将错误消息通过信号传回主线程
-            QMessageBox.critical(None, "文件错误", str(e))
+        enh = Enhancer()
+        paths = enh.enhance(
+            self.inp,
+            self.out,
+            progress_cb=lambda p: self.progress.emit(p),
+            cancel_cb=lambda: self._abort,
+        )
+        self.finished.emit(paths)
 
 
 # —— 后台线程：识别 —— #
 class DetectThread(QThread):
     progress = pyqtSignal(float)
-    finished = pyqtSignal(list, object)  # out_paths, info
+    finished = pyqtSignal(list, object)  # list of output paths, extra info
 
     def __init__(self, use_onnx, mode, params):
         super().__init__()
@@ -61,77 +57,65 @@ class DetectThread(QThread):
         self._abort = True
 
     def run(self):
-        try:
-            det = Detector(self.use_onnx)
-            cb = lambda: self._abort
-            out_paths, info = [], None
+        det = Detector(self.use_onnx)
+        cb = lambda: self._abort
+        out_paths, info = [], None
 
-            if self.mode == "predict":
-                res = det.predict_image(self.p["input"], crop=self.p["crop"], count=self.p["count"])
-                target = self.p["save"]
-                if os.path.isdir(target):
-                    name = os.path.splitext(os.path.basename(self.p["input"]))[0] + ".png"
-                    save_path = os.path.join(target, name)
-                else:
-                    root, ext = os.path.splitext(target)
-                    save_path = root + (ext if ext else ".png")
-                res.save(save_path, format="PNG")
-                out_paths = [save_path]
+        if self.mode == "predict":
+            img = det.predict_image(self.p["input"], crop=self.p["crop"], count=self.p["count"])
+            target = self.p["save"]
+            if os.path.isdir(target):
+                name = os.path.splitext(os.path.basename(self.p["input"]))[0] + ".png"
+                save_path = os.path.join(target, name)
+            else:
+                root, ext = os.path.splitext(target)
+                save_path = root + (ext or ".png")
+            img.save(save_path)
+            out_paths = [save_path]
 
-            elif self.mode == "video":
-                det.video_predict(
-                    self.p["video_path"],
-                    self.p["video_save"],
-                    fps=float(self.p["video_fps"]),
-                    progress_cb=lambda v: self.progress.emit(v),
-                    cancel_cb=cb,
-                )
-                out_paths = [self.p["video_save"]]
+        elif self.mode == "video":
+            det.video_predict(
+                self.p["video_path"],
+                self.p["video_save"],
+                fps=float(self.p["video_fps"]),
+                progress_cb=lambda v: self.progress.emit(v),
+                cancel_cb=cb
+            )
+            out_paths = [self.p["video_save"]]
 
-            elif self.mode == "fps":
-                t = det.fps_test(self.p["fps_image"], int(self.p["test_interval"]))
-                info = f"Avg time: {t:.4f}s, FPS: {1/t:.2f}"
+        elif self.mode == "fps":
+            t = det.fps_test(self.p["fps_image"], int(self.p["test_interval"]))
+            info = f"Avg time: {t:.4f}s, FPS: {1 / t:.2f}"
 
-            elif self.mode == "dir_predict":
-                out_paths = det.dir_predict(
-                    self.p["origin"],
-                    self.p["save_dir"],
-                    progress_cb=lambda v: self.progress.emit(v),
-                    cancel_cb=cb,
-                )
+        elif self.mode == "dir_predict":
+            out_paths = det.dir_predict(
+                self.p["origin"],
+                self.p["save_dir"],
+                progress_cb=lambda v: self.progress.emit(v),
+                cancel_cb=cb
+            )
 
-            elif self.mode == "heatmap":
-                img_path = self.p["heat_image"]
-                target = self.p["heat_save"]
-                if os.path.isdir(target):
-                    base = os.path.splitext(os.path.basename(img_path))[0] + "_heatmap.png"
-                    save_path = os.path.join(target, base)
-                else:
-                    root, ext = os.path.splitext(target)
-                    save_path = root + (ext if ext else ".png")
-                det.detect_heatmap(img_path, save_path)
-                out_paths = [save_path]
+        elif self.mode == "heatmap":
+            hm = det.detect_heatmap(self.p["heat_image"], self.p["heat_save"])
+            out_paths = [self.p["heat_save"]]
 
-            elif self.mode == "export_onnx":
-                det.export_onnx(self.p["simplify"], self.p["onnx_path"])
-                info = f"Exported to {self.p['onnx_path']}"
+        elif self.mode == "export_onnx":
+            det.export_onnx(self.p["simplify"], self.p["onnx_path"])
+            info = f"Exported ONNX to {self.p['onnx_path']}"
 
-            elif self.mode == "predict_onnx":
-                res = det.predict_image(self.p["input_onnx"])
-                target = self.p["save_onnx"]
-                if os.path.isdir(target):
-                    name = os.path.splitext(os.path.basename(self.p["input_onnx"]))[0] + ".png"
-                    save_path = os.path.join(target, name)
-                else:
-                    root, ext = os.path.splitext(target)
-                    save_path = root + (ext if ext else ".png")
-                res.save(save_path, format="PNG")
-                out_paths = [save_path]
+        elif self.mode == "predict_onnx":
+            img = det.predict_image(self.p["input_onnx"])
+            target = self.p["save_onnx"]
+            if os.path.isdir(target):
+                name = os.path.splitext(os.path.basename(self.p["input_onnx"]))[0] + ".png"
+                save_path = os.path.join(target, name)
+            else:
+                root, ext = os.path.splitext(target)
+                save_path = root + (ext or ".png")
+            img.save(save_path)
+            out_paths = [save_path]
 
-            self.finished.emit(out_paths, info)
-
-        except FileNotFoundError as e:
-            QMessageBox.critical(None, "文件错误", str(e))
+        self.finished.emit(out_paths, info)
 
 
 # —— 后台线程：统计 —— #
@@ -149,569 +133,378 @@ class StatsThread(QThread):
         self._abort = True
 
     def run(self):
-        try:
-            counts = self.det.stats_predict(
-                self.origin_dir,
-                progress_cb=lambda p: self.progress.emit(p),
-                cancel_cb=lambda: self._abort
-            )
-            self.finished.emit(counts)
-        except FileNotFoundError as e:
-            QMessageBox.critical(None, "文件错误", str(e))
+        counts = self.det.stats_predict(
+            self.origin_dir,
+            progress_cb=lambda p: self.progress.emit(p),
+            cancel_cb=lambda: self._abort
+        )
+        self.finished.emit(counts)
 
 
 # —— UI 页面：增强 —— #
 class EnhancePage(QWidget):
     def __init__(self):
         super().__init__()
-        # 只保留 输入/输出 目录 和 自集成 选项
-        self.inp = QLineEdit(); b1 = QPushButton("…")
-        self.out = QLineEdit(); b2 = QPushButton("…")
+        # 加载 .ui 文件
+        ui_path = os.path.join(os.path.dirname(__file__), 'ui', 'enhance_page.ui')
+        loadUi(ui_path, self)
 
-        b1.clicked.connect(lambda: self.browse(self.inp, True))
-        b2.clicked.connect(lambda: self.browse(self.out, True))
+        # 绑定浏览按钮
+        self.inpBrowseButton.clicked.connect(lambda: self.browse(self.inpLineEdit, True))
+        self.outBrowseButton.clicked.connect(lambda: self.browse(self.outLineEdit, True))
 
-        self.btn_start = QPushButton("开始增强")
-        self.btn_abort = QPushButton("中止增强")
-        self.btn_abort.setEnabled(False)
-        self.btn_start.clicked.connect(self.start)
-        self.btn_abort.clicked.connect(self.abort)
-
-        self.pb = QProgressBar()
-        self.scroll = QScrollArea()
-        self.preview = QWidget()
-        self.grid = QGridLayout(self.preview)
-        self.scroll.setWidget(self.preview)
-        self.scroll.setWidgetResizable(True)
-
-        layout = QVBoxLayout(self)
-        # 仅两行：输入目录 + 输出目录
-        for lbl, ed, btn in [
-            ("输入目录：", self.inp, b1),
-            ("输出目录：", self.out, b2),
-        ]:
-            h = QHBoxLayout()
-            h.addWidget(QLabel(lbl))
-            h.addWidget(ed)
-            h.addWidget(btn)
-            layout.addLayout(h)
-
-        h2 = QHBoxLayout()
-        h2.addWidget(self.btn_start)
-        h2.addWidget(self.btn_abort)
-        layout.addLayout(h2)
-        layout.addWidget(self.pb)
-        layout.addWidget(QLabel("预览："))
-        layout.addWidget(self.scroll)
+        # 绑定开始/中止
+        self.startButton.clicked.connect(self.start)
+        self.abortButton.clicked.connect(self.abort)
 
         self.thread = None
 
     def browse(self, edit: QLineEdit, is_dir: bool):
         if is_dir:
             path = QFileDialog.getExistingDirectory(
-                self, "选择目录", options=QFileDialog.DontUseNativeDialog, directory=os.getcwd()
+                self, "选择目录", directory=os.getcwd(),
+                options=QFileDialog.DontUseNativeDialog
             )
         else:
             path, _ = QFileDialog.getOpenFileName(
-                self, "选择文件", options=QFileDialog.DontUseNativeDialog, directory=os.getcwd()
+                self, "选择文件", directory=os.getcwd(),
+                options=QFileDialog.DontUseNativeDialog
             )
         if path:
             edit.setText(path)
 
     def start(self):
-        inp = self.inp.text().strip()
-        out = self.out.text().strip()
+        inp = self.inpLineEdit.text().strip()
+        out = self.outLineEdit.text().strip()
         if not inp or not out:
-            QMessageBox.warning(self, "参数不全", "请填写输入目录和输出目录。")
+            QMessageBox.warning(self, "参数不全", "请填写输入和输出目录。")
             return
-
-        try:
-            self.thread = EnhanceThread(inp, out)
-            self.thread.progress.connect(lambda v: self.pb.setValue(int(v * 100)))
-            self.thread.finished.connect(self.on_done)
-            self.btn_start.setEnabled(False)
-            self.btn_abort.setEnabled(True)
-            self.thread.start()
-        except FileNotFoundError as e:
-            QMessageBox.critical(self, "文件错误", str(e))
-            self.btn_start.setEnabled(True)
-            self.btn_abort.setEnabled(False)
+        self.thread = EnhanceThread(inp, out)
+        self.thread.progress.connect(lambda v: self.progressBar.setValue(int(v * 100)))
+        self.thread.finished.connect(self.on_done)
+        self.startButton.setEnabled(False)
+        self.abortButton.setEnabled(True)
+        self.thread.start()
 
     def abort(self):
         if self.thread:
             self.thread.abort()
-        self.btn_start.setEnabled(True)
-        self.btn_abort.setEnabled(False)
+        self.startButton.setEnabled(True)
+        self.abortButton.setEnabled(False)
 
     def on_done(self, paths: list):
-        self.btn_start.setEnabled(True)
-        self.btn_abort.setEnabled(False)
-        # 清空旧预览
-        for i in reversed(range(self.grid.count())):
-            self.grid.itemAt(i).widget().deleteLater()
-        # 显示前 5 张
+        self.startButton.setEnabled(True)
+        self.abortButton.setEnabled(False)
+        # 清除旧预览
+        for i in reversed(range(self.gridLayout.count())):
+            widget = self.gridLayout.itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
+        # 显示新预览（最多 5 张）
         for idx, p in enumerate(paths[:5]):
             lbl = QLabel()
             lbl.setPixmap(QPixmap(p).scaled(100, 100, Qt.KeepAspectRatio))
-            self.grid.addWidget(lbl, idx // 5, idx % 5)
-
-
-# 自定义 Delegate，用于增大行高
-class ComboDelegate(QStyledItemDelegate):
-    def sizeHint(self, option, index):
-        s = super().sizeHint(option, index)
-        return QSize(s.width(), 32)
+            self.gridLayout.addWidget(lbl, idx // 5, idx % 5)
 
 
 # —— UI 页面：识别 —— #
 class DetectPage(QWidget):
     def __init__(self):
         super().__init__()
-        mode_items = [
-            ("单张图片预测",    "predict"),
-            ("视频/摄像头检测","video"),
-            ("FPS 性能测试",   "fps"),
-            ("文件夹批量检测","dir_predict"),
-            ("热力图生成",     "heatmap"),
-            ("导出 ONNX",     "export_onnx"),
-            ("ONNX 模型预测","predict_onnx"),
-        ]
-        self.mode_cb = QComboBox()
-        for text, code in mode_items:
-            self.mode_cb.addItem(text, userData=code)
+        ui_path = os.path.join(
+            os.path.dirname(__file__), 'ui', 'detect_page.ui'
+        )
+        loadUi(ui_path, self)
 
-        view = QListView()
-        self.mode_cb.setView(view)
-        view.setItemDelegate(ComboDelegate(view))
-        view.setStyleSheet("QListView::item { padding: 4px 12px; }")
-        self.mode_cb.setMaxVisibleItems(6)
-        self.mode_cb.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.mode_cb.setMinimumContentsLength(8)
+        # 先隐藏所有可选控件，等切模式时再显示
+        for w in (
+            self.cropCheckBox, self.countCheckBox,
+            self.simplifyCheckBox, self.fpsLabel,
+            self.fpsLineEdit
+        ):
+            w.setVisible(False)
 
-        self.pages = {}
-        self.stack = QStackedWidget()
-        for _, code in mode_items:
-            w = QWidget(); g = QGridLayout(w)
-            self.pages[code] = (w, g)
-            self.stack.addWidget(w)
-
-            # 为每种模式创建一个页面和布局
-            self.pages = {}
-            self.stack = QStackedWidget()
-            for _, code in mode_items:
-                w = QWidget()
-                g = QGridLayout(w)
-                self.pages[code] = (w, g)
-                self.stack.addWidget(w)
-
-            # ———— 填充 “单张图片预测” 参数区 ———— #
-            w, g = self.pages["predict"]
-            self.ip = QLineEdit();
-            b1 = QPushButton("…")
-            b1.clicked.connect(lambda: self.browse(self.ip, False))
-            self.sp = QLineEdit();
-            b2 = QPushButton("…")
-            b2.clicked.connect(lambda: self.browse(self.sp, True))
-            self.cb_crop = QCheckBox("crop");
-            self.cb_cnt = QCheckBox("count")
-            g.addWidget(QLabel("输入图像："), 0, 0);
-            g.addWidget(self.ip, 0, 1);
-            g.addWidget(b1, 0, 2)
-            g.addWidget(QLabel("保存目录："), 1, 0);
-            g.addWidget(self.sp, 1, 1);
-            g.addWidget(b2, 1, 2)
-            g.addWidget(self.cb_crop, 2, 0);
-            g.addWidget(self.cb_cnt, 2, 1)
-
-            # ———— 填充 “视频/摄像头检测” 参数区 ———— #
-            w, g = self.pages["video"]
-            self.vp = QLineEdit();
-            b3 = QPushButton("…")
-            b3.clicked.connect(lambda: self.browse(self.vp, False))
-            self.vs = QLineEdit();
-            b4 = QPushButton("…")
-            b4.clicked.connect(lambda: self.browse(self.vs, True))
-            self.vfps = QLineEdit("25")
-            g.addWidget(QLabel("视频路径："), 0, 0);
-            g.addWidget(self.vp, 0, 1);
-            g.addWidget(b3, 0, 2)
-            g.addWidget(QLabel("保存路径："), 1, 0);
-            g.addWidget(self.vs, 1, 1);
-            g.addWidget(b4, 1, 2)
-            g.addWidget(QLabel("保存FPS："), 2, 0);
-            g.addWidget(self.vfps, 2, 1)
-
-            # ———— 填充 “FPS 性能测试” 参数区 ———— #
-            w, g = self.pages["fps"]
-            self.fp = QLineEdit();
-            b5 = QPushButton("…")
-            b5.clicked.connect(lambda: self.browse(self.fp, False))
-            self.fti = QLineEdit("100")
-            g.addWidget(QLabel("测试图像："), 0, 0);
-            g.addWidget(self.fp, 0, 1);
-            g.addWidget(b5, 0, 2)
-            g.addWidget(QLabel("次数："), 1, 0);
-            g.addWidget(self.fti, 1, 1)
-
-            # ———— 填充 “文件夹批量检测” 参数区 ———— #
-            w, g = self.pages["dir_predict"]
-            self.dp = QLineEdit();
-            b6 = QPushButton("…")
-            b6.clicked.connect(lambda: self.browse(self.dp, True))
-            self.ds = QLineEdit();
-            b7 = QPushButton("…")
-            b7.clicked.connect(lambda: self.browse(self.ds, True))
-            g.addWidget(QLabel("输入目录："), 0, 0);
-            g.addWidget(self.dp, 0, 1);
-            g.addWidget(b6, 0, 2)
-            g.addWidget(QLabel("保存目录："), 1, 0);
-            g.addWidget(self.ds, 1, 1);
-            g.addWidget(b7, 1, 2)
-
-            # ———— 填充 “热力图生成” 参数区 ———— #
-            w, g = self.pages["heatmap"]
-            self.hp = QLineEdit();
-            b8 = QPushButton("…")
-            b8.clicked.connect(lambda: self.browse(self.hp, False))
-            self.hs = QLineEdit();
-            b9 = QPushButton("…")
-            b9.clicked.connect(lambda: self.browse(self.hs, True))
-            g.addWidget(QLabel("热力图源："), 0, 0);
-            g.addWidget(self.hp, 0, 1);
-            g.addWidget(b8, 0, 2)
-            g.addWidget(QLabel("保存目录："), 1, 0);
-            g.addWidget(self.hs, 1, 1);
-            g.addWidget(b9, 1, 2)
-
-            # ———— 填充 “导出 ONNX” 参数区 ———— #
-            w, g = self.pages["export_onnx"]
-            self.cb_simp = QCheckBox("Simplify")
-            self.op = QLineEdit();
-            b10 = QPushButton("…")
-            b10.clicked.connect(lambda: self.browse(self.op, True))
-            g.addWidget(self.cb_simp, 0, 0)
-            g.addWidget(QLabel("ONNX 路径："), 1, 0);
-            g.addWidget(self.op, 1, 1);
-            g.addWidget(b10, 1, 2)
-
-            # ———— 填充 “ONNX 模型预测” 参数区 ———— #
-            w, g = self.pages["predict_onnx"]
-            self.ipx = QLineEdit();
-            b11 = QPushButton("…")
-            b11.clicked.connect(lambda: self.browse(self.ipx, False))
-            self.sox = QLineEdit();
-            b12 = QPushButton("…")
-            b12.clicked.connect(lambda: self.browse(self.sox, True))
-            g.addWidget(QLabel("输入图像："), 0, 0);
-            g.addWidget(self.ipx, 0, 1);
-            g.addWidget(b11, 0, 2)
-            g.addWidget(QLabel("保存目录："), 1, 0);
-            g.addWidget(self.sox, 1, 1);
-            g.addWidget(b12, 1, 2)
-
-            # 切换页面
-            self.mode_cb.currentIndexChanged.connect(self._on_mode_change)
-            self.mode_cb.setCurrentIndex(0)
-
-        self.btn_start = QPushButton("开始识别")
-        self.btn_abort = QPushButton("中止识别"); self.btn_abort.setEnabled(False)
-        self.btn_start.clicked.connect(self.start)
-        self.btn_abort.clicked.connect(self.abort)
-
-        self.pb = QProgressBar()
-        self.scroll = QScrollArea(); self.pre = QWidget()
-        self.grid = QGridLayout(self.pre)
-        self.scroll.setWidget(self.pre); self.scroll.setWidgetResizable(True)
-
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("模式：")); layout.addWidget(self.mode_cb)
-        layout.addWidget(self.stack)
-        hb = QHBoxLayout(); hb.addWidget(self.btn_start); hb.addWidget(self.btn_abort)
-        layout.addLayout(hb); layout.addWidget(self.pb)
-        layout.addWidget(QLabel("预览：")); layout.addWidget(self.scroll)
+        # 绑定浏览 & 按钮
+        self.inputBrowseButton.clicked.connect(lambda: self.browse(
+            self.inputLineEdit, self._is_dir_mode
+        ))
+        self.outputBrowseButton.clicked.connect(lambda: self.browse(
+            self.outputLineEdit, True
+        ))
+        self.startButton.clicked.connect(self.start)
+        self.abortButton.clicked.connect(self.abort)
 
         self.thread = None
-        self.mode_cb.setCurrentIndex(0)
-        self.mode_cb.currentIndexChanged.connect(self._on_mode_change)
-        self._on_mode_change(0)
+        self.current_mode = None
 
-    def _on_mode_change(self, idx):
-        code = self.mode_cb.itemData(idx)
-        page_widget, _ = self.pages[code]
-        self.stack.setCurrentWidget(page_widget)
+    def set_mode(self, mode: str):
+        """由 MainWindow.toolbar 调用，切换识别模式"""
+        self.current_mode = mode
 
-    def browse(self, edit, is_dir):
+        # 文本 & 子控件显隐映射
+        mapping = {
+            'predict':    ('输入图像：', '保存目录：'),
+            'video':      ('视频路径：', '保存路径：'),
+            'fps':        ('测试图像：', ''),            # 不需要保存行
+            'dir_predict':('输入目录：', '保存目录：'),
+            'heatmap':    ('热力图源：', '保存路径：'),
+            'export_onnx':('','ONNX 路径：'),
+            'predict_onnx':('输入 ONNX：','保存目录：'),
+        }
+        in_txt, out_txt = mapping.get(mode, ('输入：','保存：'))
+        # 设置标签
+        self.inputLabel.setText(in_txt)
+        self.outputLabel.setText(out_txt)
+
+        # 控制行可见性
+        has_input = bool(in_txt)
+        has_output = bool(out_txt)
+        for w in (self.inputLabel, self.inputLineEdit, self.inputBrowseButton):
+            w.setVisible(has_input)
+        for w in (self.outputLabel, self.outputLineEdit, self.outputBrowseButton):
+            w.setVisible(has_output)
+
+        # 根据模式显示额外控件
+        show_crop    = (mode == 'predict')
+        show_count   = (mode == 'predict')
+        show_simplify= (mode == 'export_onnx')
+        show_fps     = (mode in ('video','fps'))
+
+        self.cropCheckBox.setVisible(show_crop)
+        self.countCheckBox.setVisible(show_count)
+        self.simplifyCheckBox.setVisible(show_simplify)
+
+        # FPS 文本根据模式调整
+        if mode == 'video':
+            self.fpsLabel.setText('视频 FPS：')
+        elif mode == 'fps':
+            self.fpsLabel.setText('测试次数：')
+        self.fpsLabel.setVisible(show_fps)
+        self.fpsLineEdit.setVisible(show_fps)
+
+    def _is_dir_mode(self):
+        """dir_predict 模式下输入是目录，其它都是文件"""
+        return self.current_mode == 'dir_predict'
+
+    def browse(self, edit: QLineEdit, is_dir: bool):
         if is_dir:
-            p = QFileDialog.getExistingDirectory(self, "选择目录",
-                options=QFileDialog.DontUseNativeDialog, directory=os.getcwd())
+            path = QFileDialog.getExistingDirectory(
+                self, "选择目录", os.getcwd(),
+                options=QFileDialog.DontUseNativeDialog
+            )
         else:
-            p, _ = QFileDialog.getOpenFileName(self, "选择文件",
-                options=QFileDialog.DontUseNativeDialog, directory=os.getcwd())
-        if p:
-            edit.setText(p)
+            path, _ = QFileDialog.getOpenFileName(
+                self, "选择文件", os.getcwd(),
+                options=QFileDialog.DontUseNativeDialog
+            )
+        if path:
+            edit.setText(path)
 
     def start(self):
-        mode = self.mode_cb.currentData()
+        m = self.current_mode
         params = {}
-        # —— 根据模式收集参数 —— #
-        if mode == "predict":
+        # 收集参数
+        if m == 'predict':
             params = {
-                "input": self.ip.text(),
-                "save": self.sp.text(),
-                "crop": self.cb_crop.isChecked(),
-                "count": self.cb_cnt.isChecked(),
+                "input": self.inputLineEdit.text(),
+                "save":  self.outputLineEdit.text(),
+                "crop":  self.cropCheckBox.isChecked(),
+                "count": self.countCheckBox.isChecked()
             }
-        elif mode == "video":
+        elif m == 'video':
             params = {
-                "video_path": self.vp.text(),
-                "video_save": self.vs.text(),
-                "video_fps": self.vfps.text(),
+                "video_path": self.inputLineEdit.text(),
+                "video_save": self.outputLineEdit.text(),
+                "video_fps":  self.fpsLineEdit.text()
             }
-        elif mode == "fps":
+        elif m == 'fps':
             params = {
-                "fps_image": self.fp.text(),
-                "test_interval": self.fti.text(),
+                "fps_image":    self.inputLineEdit.text(),
+                "test_interval": int(self.fpsLineEdit.text() or 100)
             }
-        elif mode == "dir_predict":
+        elif m == 'dir_predict':
             params = {
-                "origin": self.dp.text(),
-                "save_dir": self.ds.text(),
+                "origin":   self.inputLineEdit.text(),
+                "save_dir": self.outputLineEdit.text()
             }
-        elif mode == "heatmap":
+        elif m == 'heatmap':
             params = {
-                "heat_image": self.hp.text(),
-                "heat_save": self.hs.text(),
+                "heat_image": self.inputLineEdit.text(),
+                "heat_save":  self.outputLineEdit.text()
             }
-        elif mode == "export_onnx":
+        elif m == 'export_onnx':
             params = {
-                "simplify": self.cb_simp.isChecked(),
-                "onnx_path": self.op.text(),
+                "simplify":   self.simplifyCheckBox.isChecked(),
+                "onnx_path":  self.outputLineEdit.text()
             }
-        elif mode == "predict_onnx":
+        elif m == 'predict_onnx':
             params = {
-                "input_onnx": self.ipx.text(),
-                "save_onnx": self.sox.text(),
+                "input_onnx": self.inputLineEdit.text(),
+                "save_onnx":  self.outputLineEdit.text()
             }
-        else:
+
+        # 基本校验
+        if not self.inputLineEdit.text() or (m != 'fps' and not self.outputLineEdit.text()):
+            QMessageBox.warning(self, "参数不全", "请填写必要的输入/输出。")
             return
 
-        # 参数完整性校验
-        if any(v in (None, "") for v in params.values()):
-            QMessageBox.warning(self, "参数不全", "请填写完整参数后再开始。")
-            return
-
-        # 文件/目录预检查
-        try:
-            if mode == "predict":
-                if not os.path.exists(params["input"]):
-                    raise FileNotFoundError(f"输入图像不存在：{params['input']}")
-                save = params["save"]
-                if not os.path.isdir(save) and not os.path.exists(os.path.dirname(save)):
-                    raise FileNotFoundError(f"保存路径不可用：{save}")
-
-            elif mode == "video":
-                if not os.path.exists(params["video_path"]):
-                    raise FileNotFoundError(f"视频文件不存在：{params['video_path']}")
-
-            elif mode == "fps":
-                if not os.path.exists(params["fps_image"]):
-                    raise FileNotFoundError(f"测试图像不存在：{params['fps_image']}")
-
-            elif mode == "dir_predict":
-                if not os.path.exists(params["origin"]):
-                    raise FileNotFoundError(f"输入目录不存在：{params['origin']}")
-
-            elif mode == "heatmap":
-                if not os.path.exists(params["heat_image"]):
-                    raise FileNotFoundError(f"热力图源文件不存在：{params['heat_image']}")
-
-            elif mode in ("export_onnx",):
-                # 导出 ONNX 时，父目录应存在
-                out_dir = os.path.dirname(params["onnx_path"]) or "."
-                if not os.path.exists(out_dir):
-                    raise FileNotFoundError(f"ONNX 保存目录不存在：{out_dir}")
-
-            elif mode == "predict_onnx":
-                if not os.path.exists(params["input_onnx"]):
-                    raise FileNotFoundError(f"输入 ONNX 图像不存在：{params['input_onnx']}")
-                save = params["save_onnx"]
-                if not os.path.isdir(save) and not os.path.exists(os.path.dirname(save)):
-                    raise FileNotFoundError(f"ONNX 预测保存路径不可用：{save}")
-
-            # 启动线程
-            self.thread = DetectThread(False, mode, params)
-            self.thread.progress.connect(lambda v: self.pb.setValue(int(v * 100)))
-            self.thread.finished.connect(self.on_done)
-            self.btn_start.setEnabled(False)
-            self.btn_abort.setEnabled(True)
-            self.thread.start()
-
-        except FileNotFoundError as e:
-            QMessageBox.critical(self, "文件错误", str(e))
+        # 启动线程
+        self.thread = DetectThread(False, m, params)
+        self.thread.progress.connect(lambda v: self.progressBar.setValue(int(v*100)))
+        self.thread.finished.connect(self.on_done)
+        self.startButton.setEnabled(False)
+        self.abortButton.setEnabled(True)
+        self.thread.start()
 
     def abort(self):
         if self.thread:
             self.thread.abort()
-        self.btn_start.setEnabled(True)
-        self.btn_abort.setEnabled(False)
+        self.startButton.setEnabled(True)
+        self.abortButton.setEnabled(False)
 
-    def on_done(self, paths, info):
-        self.btn_start.setEnabled(True)
-        self.btn_abort.setEnabled(False)
-
-        # 更新预览
-        for i in reversed(range(self.grid.count())):
-            self.grid.itemAt(i).widget().deleteLater()
+    def on_done(self, paths: list, info):
+        self.startButton.setEnabled(True)
+        self.abortButton.setEnabled(False)
+        # 清空旧预览
+        for i in reversed(range(self.gridLayout_preview.count())):
+            w = self.gridLayout_preview.itemAt(i).widget()
+            if w: w.deleteLater()
+        # 显示新结果
         for idx, p in enumerate(paths):
             lbl = QLabel()
             lbl.setPixmap(QPixmap(p).scaled(100,100,Qt.KeepAspectRatio))
-            self.grid.addWidget(lbl, idx//5, idx%5)
-
+            self.gridLayout_preview.addWidget(lbl, idx//5, idx%5)
         if info:
-            QMessageBox.information(self, "结果信息", str(info))
+            QMessageBox.information(self, "信息", str(info))
 
 
 # —— UI 页面：统计 —— #
 class StatsPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.origin = QLineEdit(); b1 = QPushButton("…")
-        self.save_dir = QLineEdit(); b2 = QPushButton("…")
-        b1.clicked.connect(lambda: self.browse(self.origin, True))
-        b2.clicked.connect(lambda: self.browse(self.save_dir, True))
+        # 加载 .ui
+        ui_path = os.path.join(os.path.dirname(__file__), 'ui', 'stats_page.ui')
+        loadUi(ui_path, self)
 
-        self.btn_start = QPushButton("开始统计")
-        self.btn_abort = QPushButton("中止统计"); self.btn_abort.setEnabled(False)
-        self.btn_start.clicked.connect(self.start)
-        self.btn_abort.clicked.connect(self.abort)
+        # 绑定浏览按钮
+        self.originBrowseButton.clicked.connect(lambda: self.browse(self.originLineEdit, True))
+        self.saveBrowseButton.clicked.connect(lambda: self.browse(self.saveLineEdit, True))
 
-        self.pb = QProgressBar()
-        self.scroll = QScrollArea(); self.pre = QWidget()
-        self.grid = QGridLayout(self.pre)
-        self.scroll.setWidget(self.pre); self.scroll.setWidgetResizable(True)
-
-        layout = QVBoxLayout(self)
-        for lbl, ed, btn in [
-            ("输入目录：", self.origin, b1),
-            ("保存目录：", self.save_dir, b2),
-        ]:
-            h = QHBoxLayout(); h.addWidget(QLabel(lbl)); h.addWidget(ed); h.addWidget(btn)
-            layout.addLayout(h)
-        h2 = QHBoxLayout(); h2.addWidget(self.btn_start); h2.addWidget(self.btn_abort)
-        layout.addLayout(h2); layout.addWidget(self.pb)
-        layout.addWidget(QLabel("统计图预览：")); layout.addWidget(self.scroll)
+        # 绑定开始/中止
+        self.startButton.clicked.connect(self.start)
+        self.abortButton.clicked.connect(self.abort)
+        self.abortButton.setEnabled(False)
 
         self.thread = None
 
-    def browse(self, edit, is_dir):
-        p = QFileDialog.getExistingDirectory(self,
-            options=QFileDialog.DontUseNativeDialog, directory=os.getcwd()) if is_dir else \
-            QFileDialog.getSaveFileName(self,
-            options=QFileDialog.DontUseNativeDialog, directory=os.getcwd())[0]
-        if p:
-            edit.setText(p)
+    def browse(self, edit: QLineEdit, is_dir: bool):
+        if is_dir:
+            path = QFileDialog.getExistingDirectory(
+                self, "选择目录", directory=os.getcwd(),
+                options=QFileDialog.DontUseNativeDialog
+            )
+        else:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "选择文件", directory=os.getcwd(),
+                options=QFileDialog.DontUseNativeDialog
+            )
+        if path:
+            edit.setText(path)
 
     def start(self):
-        origin = self.origin.text()
-        save_dir = self.save_dir.text()
+        origin = self.originLineEdit.text().strip()
+        save_dir = self.saveLineEdit.text().strip()
         if not origin or not save_dir:
-            QMessageBox.warning(self, "参数不全", "请填写输入目录和保存目录。")
-            return
-        if not os.path.exists(origin):
-            QMessageBox.critical(self, "文件错误", f"输入目录不存在：{origin}")
+            QMessageBox.warning(self, "参数不全", "请填写输入和保存目录。")
             return
 
-        try:
-            det = Detector(use_onnx=False)
-            self.thread = StatsThread(det, origin)
-            self.thread.progress.connect(lambda v: self.pb.setValue(int(v * 100)))
-            self.thread.finished.connect(lambda counts: self.on_done(counts, save_dir))
-            self.btn_start.setEnabled(False)
-            self.btn_abort.setEnabled(True)
-            self.thread.start()
+        det = Detector(False)
+        self.thread = StatsThread(det, origin)
+        self.thread.progress.connect(lambda v: self.progressBar.setValue(int(v * 100)))
+        self.thread.finished.connect(lambda counts: self.on_done(counts, save_dir))
 
-        except Exception as e:
-            QMessageBox.critical(self, "错误", str(e))
+        self.startButton.setEnabled(False)
+        self.abortButton.setEnabled(True)
+        self.thread.start()
 
     def abort(self):
         if self.thread:
             self.thread.abort()
-        self.btn_start.setEnabled(True)
-        self.btn_abort.setEnabled(False)
+        self.startButton.setEnabled(True)
+        self.abortButton.setEnabled(False)
 
-    def on_done(self, counts, save_dir):
-        self.btn_start.setEnabled(True)
-        self.btn_abort.setEnabled(False)
+    def on_done(self, counts: dict, save_dir: str):
+        self.startButton.setEnabled(True)
+        self.abortButton.setEnabled(False)
 
-        try:
-            pie, bar, line = generate_stats_charts(counts, save_dir)
-        except Exception as e:
-            QMessageBox.critical(self, "统计图生成错误", str(e))
-            return
+        # 生成图表
+        pie, bar, line = generate_stats_charts(counts, save_dir)
 
-        # 清空旧预览
-        for i in reversed(range(self.grid.count())):
-            self.grid.itemAt(i).widget().deleteLater()
-        for idx, p in enumerate([pie, bar, line]):
+        # 清空旧图
+        for i in reversed(range(self.chartGridLayout.count())):
+            w = self.chartGridLayout.itemAt(i).widget()
+            if w:
+                w.deleteLater()
+
+        # 添加新图（3 张）
+        for idx, img_path in enumerate((pie, bar, line)):
             lbl = QLabel()
-            lbl.setPixmap(QPixmap(p).scaled(300, 300, Qt.KeepAspectRatio))
-            self.grid.addWidget(lbl, idx // 3, idx % 3)
+            pix = QPixmap(img_path).scaled(300, 300, Qt.KeepAspectRatio)
+            lbl.setPixmap(pix)
+            self.chartGridLayout.addWidget(lbl, idx // 3, idx % 3)
 
 
 # —— 主窗口 —— #
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("水面漂浮物系统")
-        self.resize(1024, 768)
-        self.setWindowIcon(QIcon("UI/ui.png"))
+        # 加载 .ui
+        ui_path = os.path.join(os.path.dirname(__file__), 'ui', 'mainwindow.ui')
+        loadUi(ui_path, self)
 
-        mb = self.menuBar()
-        for title in ["文件", "图像浏览", "数据分析"]:
-            mb.addMenu(title)
-
-        tb = QToolBar()
-        for icon, tip, page in [
-            ("UI/exit_system.png", "退出", None),
-            ("UI/enhance.png", "增强", "enhance"),
-            ("UI/detect.png", "识别", "detect"),
-            ("UI/stats.png", "统计", "stats")
-        ]:
-            act = QAction(QIcon(icon), tip, self)
-            if tip == "退出":
-                act.triggered.connect(self.close)
-            tb.addAction(act)
-            if page == "enhance":
-                act.triggered.connect(lambda _, p="enhance": self.switch(p))
-            if page == "detect":
-                act.triggered.connect(lambda _, p="detect": self.switch(p))
-            if page == "stats":
-                act.triggered.connect(lambda _, p="stats": self.switch(p))
-        self.addToolBar(tb)
-
+        # 创建各功能页面
         self.enh_page = EnhancePage()
         self.det_page = DetectPage()
         self.stats_page = StatsPage()
-        self.central_widget = QStackedWidget()
-        self.central_widget.addWidget(self.enh_page)
-        self.central_widget.addWidget(self.det_page)
-        self.central_widget.addWidget(self.stats_page)
-        self.setCentralWidget(self.central_widget)
-        self.switch("enhance")
 
-    def switch(self, name):
-        if name == "enhance":
-            self.central_widget.setCurrentWidget(self.enh_page)
-        elif name == "detect":
-            self.central_widget.setCurrentWidget(self.det_page)
-        elif name == "stats":
-            self.central_widget.setCurrentWidget(self.stats_page)
+        # 把页面加入 stackedWidget
+        self.stackedWidget.addWidget(self.enh_page)
+        self.stackedWidget.addWidget(self.det_page)
+        self.stackedWidget.addWidget(self.stats_page)
+
+        # 连接工具栏按钮
+        self.actionExit.triggered.connect(self.close)
+        self.actionEnhance.triggered.connect(lambda: self._switch_main('enhance'))
+        self.actionStats.triggered.connect(lambda: self._switch_main('stats'))
+        self.actionDetectPredict.triggered.connect(lambda: self._switch_detect('predict'))
+        self.actionDetectVideo.triggered.connect(lambda: self._switch_detect('video'))
+        self.actionFPSTest.triggered.connect(lambda: self._switch_detect('fps'))
+        self.actionDirPredict.triggered.connect(lambda: self._switch_detect('dir_predict'))
+        self.actionHeatmap.triggered.connect(lambda: self._switch_detect('heatmap'))
+        self.actionExportONNX.triggered.connect(lambda: self._switch_detect('export_onnx'))
+        self.actionPredictONNX.triggered.connect(lambda: self._switch_detect('predict_onnx'))
+
+        # 默认显示“增强”页
+        self._switch_main('enhance')
+
+    def _switch_main(self, name: str):
+        """切换到 EnhancePage 或 StatsPage"""
+        if name == 'enhance':
+            self.stackedWidget.setCurrentWidget(self.enh_page)
+        elif name == 'stats':
+            self.stackedWidget.setCurrentWidget(self.stats_page)
+
+    def _switch_detect(self, mode: str):
+        """切换到 DetectPage 并设置具体识别模式"""
+        self.stackedWidget.setCurrentWidget(self.det_page)
+        self.det_page.set_mode(mode)
 
 
 def main():
+    import sys
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+    win = MainWindow()
+    win.show()
     sys.exit(app.exec_())
 
 

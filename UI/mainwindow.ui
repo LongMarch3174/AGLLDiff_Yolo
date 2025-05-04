@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="windowTitle">
+   <string>水面漂浮物系统</string>
+  </property>
+  <property name="geometry">
+  <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1024</width>    <!-- 改成你需要的宽度 -->
+    <height>768</height>   <!-- 改成你需要的高度 -->
+  </rect>
+  </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>ui.png</normaloff>
+   </iconset>
+  </property>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>工具栏</string>
+   </property>
+   <property name="iconSize">
+      <size>
+        <width>48</width>
+        <height>48</height>
+      </size>
+    </property>
+   <property name="minimumHeight">
+      <number>60</number>
+   </property>
+   <addaction name="actionExit"/>
+   <addaction name="actionEnhance"/>
+   <addaction name="actionDetectPredict"/>
+   <addaction name="actionDetectVideo"/>
+   <addaction name="actionFPSTest"/>
+   <addaction name="actionDirPredict"/>
+   <addaction name="actionHeatmap"/>
+   <addaction name="actionExportONNX"/>
+   <addaction name="actionPredictONNX"/>
+   <addaction name="actionStats"/>
+  </widget>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QStackedWidget" name="stackedWidget"/>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <!-- Actions 定义 -->
+  <action name="actionExit">
+   <property name="text"><string>退出</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>exit_system.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionEnhance">
+   <property name="text"><string>增强</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>enhance.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionDetectPredict">
+   <property name="text"><string>单张预测</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>predict.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionDetectVideo">
+   <property name="text"><string>视频检测</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>video.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionFPSTest">
+   <property name="text"><string>FPS测试</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>fps.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionDirPredict">
+   <property name="text"><string>批量检测</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>dir.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionHeatmap">
+   <property name="text"><string>热力图</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>heat.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionExportONNX">
+   <property name="text"><string>导出ONNX</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>onnx.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionPredictONNX">
+   <property name="text"><string>ONNX预测</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>onnx_pre.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+  <action name="actionStats">
+   <property name="text"><string>统计</string></property>
+   <property name="icon">
+    <iconset>
+     <normaloff>stats.png</normaloff>
+    </iconset>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

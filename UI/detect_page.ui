@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DetectPage</class>
+ <widget class="QWidget" name="DetectPage">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>600</width><height>550</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+    <!-- 输入行 -->
+    <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_input">
+        <item>
+          <widget class="QLabel" name="inputLabel">
+            <property name="text"><string>输入：</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QLineEdit" name="inputLineEdit"/>
+        </item>
+        <item>
+          <widget class="QPushButton" name="inputBrowseButton">
+            <property name="text"><string>…</string></property>
+          </widget>
+        </item>
+      </layout>
+    </item>
+    <!-- 输出行 -->
+    <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_output">
+        <item>
+          <widget class="QLabel" name="outputLabel">
+            <property name="text"><string>保存：</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QLineEdit" name="outputLineEdit"/>
+        </item>
+        <item>
+          <widget class="QPushButton" name="outputBrowseButton">
+            <property name="text"><string>…</string></property>
+          </widget>
+        </item>
+      </layout>
+    </item>
+    <!-- 可选参数 -->
+    <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_options">
+        <item>
+          <widget class="QCheckBox" name="cropCheckBox">
+            <property name="text"><string>crop</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QCheckBox" name="countCheckBox">
+            <property name="text"><string>count</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QCheckBox" name="simplifyCheckBox">
+            <property name="text"><string>Simplify</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QLabel" name="fpsLabel">
+            <property name="text"><string>FPS：</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QLineEdit" name="fpsLineEdit"/>
+        </item>
+      </layout>
+    </item>
+    <!-- 按钮区 -->
+    <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_buttons">
+        <item>
+          <widget class="QPushButton" name="startButton">
+            <property name="text"><string>开始识别</string></property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QPushButton" name="abortButton">
+            <property name="text"><string>中止识别</string></property>
+            <property name="enabled"><bool>false</bool></property>
+          </widget>
+        </item>
+      </layout>
+    </item>
+    <!-- 进度条 -->
+    <item>
+      <widget class="QProgressBar" name="progressBar"/>
+    </item>
+    <!-- 预览标签 -->
+    <item>
+      <widget class="QLabel" name="previewLabel">
+        <property name="text"><string>预览：</string></property>
+      </widget>
+    </item>
+    <!-- 预览区 -->
+    <item>
+      <widget class="QScrollArea" name="previewScrollArea">
+        <property name="widgetResizable"><bool>true</bool></property>
+        <widget class="QWidget" name="previewWidget">
+          <layout class="QGridLayout" name="gridLayout_preview"/>
+        </widget>
+      </widget>
+    </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
