@@ -62,7 +62,12 @@ class DetectThread(QThread):
         out_paths, info = [], None
 
         if self.mode == "predict":
-            img = det.predict_image(self.p["input"], crop=self.p["crop"], count=self.p["count"])
+            result = det.predict_image(self.p["input"], crop=self.p["crop"], count=self.p["count"])
+            if isinstance(result, tuple):
+                img, info = result
+            else:
+                img = result
+
             target = self.p["save"]
             if os.path.isdir(target):
                 name = os.path.splitext(os.path.basename(self.p["input"]))[0] + ".png"
@@ -226,7 +231,7 @@ class DetectPage(QWidget):
 
         # 绑定浏览 & 按钮
         self.inputBrowseButton.clicked.connect(lambda: self.browse(
-            self.inputLineEdit, self._is_dir_mode
+            self.inputLineEdit, self._is_dir_mode()
         ))
         self.outputBrowseButton.clicked.connect(lambda: self.browse(
             self.outputLineEdit, True
